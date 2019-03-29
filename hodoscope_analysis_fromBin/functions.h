@@ -1,3 +1,5 @@
+//Modify function file
+
 #ifndef FUNCTIONS_
 #define FUNCTIONS_
 
