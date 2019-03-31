@@ -54,7 +54,6 @@ int main (int argc,char ** argv)
   std::cout<<"Type the run number : (return to confirm)"<<std::endl;
   std::cin>>runN;
   char path[100] = "/media/oreste/DATA/HODOPIC_Acq/";//"/home/daq/gamhadron/daqGh/data/";//folder where the data are saved
-  //char path[100] = "/Users/fontana/Dropbox/ASIC_Characterization_Hodoscope/RUN_HODOPIC/";
   char filemain[100];//main part of the file name - only numbering stuff after that
   int xx = sprintf(filemain, "%d-", runN);
   char format[30] =".dat";//data format -> the acquisition software creates .dat files
@@ -216,6 +215,7 @@ int main (int argc,char ** argv)
   pt->Draw();
   time_pad->cd();
   time->Draw();
+  
 
   //----------------------------------------------------END creation of desired plots----------------------------------------------------//
 
@@ -323,6 +323,7 @@ int main (int argc,char ** argv)
     		           }
     		           else{std::cout<<"Problem in fiber identification -> skip event "<<std::endl; continue;}
     	           }
+
     	           else if(data_fiber.N_fiber_rec>=32){
                    cog_Y->Fill(data_fiber.N_fiber_rec-32);
     	             conv_Y = convert_Ychannel_withCable(data_fiber.N_fiber_rec-32);
@@ -362,6 +363,7 @@ int main (int argc,char ** argv)
             N_event++;
           }
         }
+        //time->Fit("gaus","V","E1",56,67);
         gSystem->ProcessEvents();
         for(int pd2 = 1; pd2 < 4; pd2++){
           complex_canv->cd();
@@ -400,23 +402,47 @@ int main (int argc,char ** argv)
     }
   }else{std::cout<<"No files for the selected run - RETURN"<<std::endl;}
 
+  // density of events under time difference peak computing
+ 
+  int last_bin = time->FindLastBinAbove(0,1);
+  int first_bin = time->FindFirstBinAbove(0,1);
+  int bline_counter;
+  double baseline_integral=0.;
+  double peak_time_integral=0.;
+  for (int bline=last_bin-26; bline<=last_bin-16;bline++){ //Change -26 and -16 value if bline value is under the peak. It can change if the time window is modified. It has been configured for a time window between 56 and 86 ns about.
+    baseline_integral = baseline_integral + time->GetBinContent(bline);
+    bline_counter=bline_counter+1;
+  }
+  double baseline = baseline_integral / bline_counter;
+  std::cout<<baseline<<std::endl;
+
+  for (int bin_scanner=first_bin; bin_scanner<=last_bin; bin_scanner++){
+    if (time->GetBinContent(bin_scanner)>baseline){
+    peak_time_integral = peak_time_integral + (time->GetBinContent(bin_scanner) - baseline);
+    }
+  }
+  double density_under_peak_time = (peak_time_integral / time->Integral())*100;
+  std::cout<<"Density of events under the time difference peak without baseline : "<<density_under_peak_time<<std::endl;
+  
+  
+
   time->SetMinimum(0.001);
   TCanvas *cTimeLog = new TCanvas("time spectrum log scale", "time spectrum log scale", 600, 500);
   cTimeLog->SetFillColor(0); //
   cTimeLog->SetBorderMode(0);	//
   cTimeLog->SetLeftMargin(0.1409396); //
   cTimeLog->SetRightMargin(0.14865772); //
+  cTimeLog->SetLogy();
   gStyle->SetOptStat(000); //
   cTimeLog->cd();
   time->Draw("hist");
-  gPad->SetLogy();
+
 
     std::cout<<"TOT EVENT ANALYZED "<<N_event<<std::endl;
     std::cout<<"Event analyzed (with at least one fiber hit) "<<N_event_valid<<" so "<<(double(N_event_valid)/double(N_event))*100<<std::endl;
     std::cout<<"Event analyzed (with at least one fiber hit in X) "<<N_event_valid_X<<" so "<<(double(N_event_valid_X)/double(N_event))*100<<std::endl;
     std::cout<<"Event analyzed (with at least one fiber hit in Y) "<<N_event_valid_Y<<" so "<<(double(N_event_valid_Y)/double(N_event))*100<<std::endl;
     std::cout<<"Event analyzed (with X/Y coinc) "<<N_event_valid_coinc<<" so "<<(double(N_event_valid_coinc)/double(N_event))*100<<std::endl;
-
 
 
   TFile outroot(Form("./analysis_output/run%d.root", runN), "RECREATE");
