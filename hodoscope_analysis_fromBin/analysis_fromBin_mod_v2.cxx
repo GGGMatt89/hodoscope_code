@@ -34,6 +34,7 @@
 #include "TGWindow.h"
 #include "TGClient.h"
 #include "TPaveText.h"
+#include "TMath.h"
 //custom classes
 #include "functions.h"
 
@@ -109,9 +110,9 @@ int main (int argc,char ** argv)
   uint8_t hit_structure_mode1[7];//time and charge data - test mode
   int position = 0; //to check the pointer position in the file and avoid misreading
 
-  //Initializing vectors for saving time datas and variable to calculate the time difference
-  std::vector <int>  hit_time_rec_vec;
-  double mean_time=0., sum_time=0.,time_delay=0.;
+  //Initializing variables for saving time datas and variable to calculate the time difference
+  double  hit_time_rec_coinc, hit_time_rec_X, hit_time_rec_Y;
+  double  time_coinc_delay=0.,time_X_delay=0., time_Y_delay=0.;
   //Starting ROOT in the c++ program
   TApplication theApp("App", &argc, argv);
   if (gROOT->IsBatch()) {
@@ -161,12 +162,23 @@ int main (int argc,char ** argv)
   pos_2D->GetYaxis()->SetTitle("Position Y");
   pos_2D->SetMinimum(0);
 
-  TH1F *time = new TH1F("time info", "time info", 150, 40, 100);
-  time->SetLineColor(kBlue);
-  time->GetXaxis()->SetTitle("Time difference (ns)");
-  time->SetMinimum(-200);
-  time->GetYaxis()->SetTitle("Entries");
-  time->SetMinimum(0);
+  TH1F *time_X = new TH1F("Time delay on X plane", "Time delay on X plane", 100, 50, 90);
+  time_X->SetLineColor(kRed);
+  time_X->GetXaxis()->SetTitle("Time difference (ns)");
+  time_X->GetYaxis()->SetTitle("Entries");
+  time_X->SetMinimum(0);
+
+  TH1F *time_Y = new TH1F("Time delay on Y plane", "Time delay on Y plane", 100, 50, 90);
+  time_Y->SetLineColor(kGreen);
+  time_Y->GetXaxis()->SetTitle("Time difference (ns)");
+  time_Y->GetYaxis()->SetTitle("Entries");
+  time_Y->SetMinimum(0);
+
+  TH1F *time_coinc = new TH1F("Time delay with coincidence of fiber planes", "Time delay with coincidence of fiber planes", 100, 50, 90);
+  time_coinc->SetLineColor(kBlue);
+  time_coinc->GetXaxis()->SetTitle("Time difference (ns)");
+  time_coinc->GetYaxis()->SetTitle("Entries");
+  time_coinc->SetMinimum(0);
   //Preparing stats to be shown
   TPaveText *pt;
   //Preparing canvas
@@ -182,7 +194,7 @@ int main (int argc,char ** argv)
   TPad *treat_positions_pad = new TPad("treat_positions_pad", "treat_positions_pad", 0.03, 0.03, 0.48, 0.34, 0);
   TPad *map_pad = new TPad("map_pad", "map_pad", 0.5, 0.46, 0.98, 0.98, 0);
   TPad *stats_pad = new TPad("stats_pad", "stats_pad", 0.5, 0.02, 0.98, 0.26, 0);
-  TPad *time_pad = new TPad("time_pad", "time_pad", 0.48, 0.26, 0.73, 0.46, 0);
+  TPad *time_pad = new TPad("time_pad", "time_pad", 0.48, 0.26, 0.98, 0.46, 0);
   raw_dt_pad->Draw();
   treat_cluster_pad->Draw();
   treat_positions_pad->Draw();
@@ -213,9 +225,13 @@ int main (int argc,char ** argv)
   pt = new TPaveText(.05,.1,.95,.9);
   pt->AddText(Form("#bf{RUN %d - monitoring stats}", runN));
   pt->Draw();
-  time_pad->cd();
-  time->Draw();
-  
+  time_pad->Divide(3, 1);
+  time_pad->cd(1);
+  time_X->Draw();
+  time_pad->cd(2);
+  time_Y->Draw();
+  time_pad->cd(3);
+  time_coinc->Draw();
 
   //----------------------------------------------------END creation of desired plots----------------------------------------------------//
 
@@ -285,7 +301,6 @@ int main (int argc,char ** argv)
           continue;
         }
         for(int Nevnts = 0; Nevnts<file_beg.Ntot_events; Nevnts++){
-        hit_time_rec_vec.clear();
           fp.read((char *)event_header, sizeof(event_header));//reading the event header
           unpack_eventHead((unsigned char *)event_header, event_id);
           //std::cout<<Nevnts<<std::endl;
@@ -302,17 +317,12 @@ int main (int argc,char ** argv)
           if(data_struct.modules_num>0){
             N_event_valid++;
             cluster->Fill(data_struct.modules_num);//filling cluster plot
-	          if(data_struct.mode_num==7){
-		          for(int w = 0; w<data_struct.modules_num; w++){//reading the data from each involved fiber
-	               fp.read((char *)hit_structure_mode0, sizeof(hit_structure_mode0));
-	               unpack_data((unsigned char *)hit_structure_mode0, data_fiber);
-                 hit_time_rec_vec.push_back(data_fiber.hit_time_rec);
-                 sum_time=0.;
-                 for(int z=0;z<hit_time_rec_vec.size();z++){ sum_time=sum_time+hit_time_rec_vec.at(z);}
-                 mean_time=sum_time/hit_time_rec_vec.size();
-                 time_delay = std::abs((mean_time*0.3125) - (event_id.trigger_number*0.625)) ;
-		             time->Fill(time_delay);
-                 if(data_fiber.N_fiber_rec<32){
+	      if(data_struct.mode_num==7){
+		 for(int w = 0; w<data_struct.modules_num; w++){//reading the data from each involved fiber
+	         fp.read((char *)hit_structure_mode0, sizeof(hit_structure_mode0));
+	         unpack_data((unsigned char *)hit_structure_mode0, data_fiber);
+                 
+                   if(data_fiber.N_fiber_rec<32){
                    cog_X->Fill(data_fiber.N_fiber_rec);
     		           conv_X = convert_Xchannel_withCable(data_fiber.N_fiber_rec);
     		           if(conv_X > 0){
@@ -320,23 +330,33 @@ int main (int argc,char ** argv)
     		             molt_X++;
     		             flag_X = true;
     		             temp_pos_X += (conv_X);
+                             hit_time_rec_X = data_fiber.hit_time_rec;
     		           }
     		           else{std::cout<<"Problem in fiber identification -> skip event "<<std::endl; continue;}
+                   
     	           }
 
     	           else if(data_fiber.N_fiber_rec>=32){
-                   cog_Y->Fill(data_fiber.N_fiber_rec-32);
+                     cog_Y->Fill(data_fiber.N_fiber_rec-32);
     	             conv_Y = convert_Ychannel_withCable(data_fiber.N_fiber_rec-32);
     		           if(conv_Y>0){
     		              position_Y->Fill(conv_Y);
     		              molt_Y++;
     		              flag_Y = true;
     		              temp_pos_Y += (conv_Y);
-                  }
-    		          else{std::cout<<"Problem in fiber identification -> skip event "<<std::endl; continue;}
+                              hit_time_rec_Y = data_fiber.hit_time_rec ;
+                           }
+    		           else{std::cout<<"Problem in fiber identification -> skip event "<<std::endl; continue;}
+                   
     	           }
+                   
     	           bzero(hit_structure_mode0, 5);
     	        }
+
+                time_X_delay = std::abs((hit_time_rec_X*0.3125) - (event_id.trigger_number*0.625)) ;
+                time_Y_delay = std::abs((hit_time_rec_Y*0.3125) - (event_id.trigger_number*0.625)) ;
+                time_X->Fill(time_X_delay);
+                time_Y->Fill(time_Y_delay);
     	        temp_pos_X /= molt_X;
     	        temp_pos_Y /= molt_Y;
     	        cluster_X->Fill(molt_X);
@@ -346,11 +366,15 @@ int main (int argc,char ** argv)
                 if(flag_X){N_event_valid_X++;}
                 if(flag_Y){N_event_valid_Y++;}
     	        if(flag_X && flag_Y){
-                    N_event_valid_coinc++;
-    	          pos_2D->Fill(temp_pos_X, temp_pos_Y);
-    	          coinc_counter++;
+                N_event_valid_coinc++;
+    	        pos_2D->Fill(temp_pos_X, temp_pos_Y);
+                hit_time_rec_coinc= data_fiber.hit_time_rec ;
+    	        coinc_counter++;
+                  
     	        }
-    	        temp_pos_X = 0.; temp_pos_Y = 0.; molt_X = 0; molt_Y = 0; flag_X = false; flag_Y = false; conv_X = 0; conv_Y = 0;
+		time_coinc_delay = std::abs((hit_time_rec_coinc*0.3125) - (event_id.trigger_number*0.625)) ;
+                time_coinc->Fill(time_coinc_delay);
+    	        temp_pos_X = 0.; temp_pos_Y = 0.; molt_X = 0; molt_Y = 0; flag_X = false; flag_Y = false; conv_X = 0; conv_Y = 0; hit_time_rec_X=0.; hit_time_rec_Y=0.; hit_time_rec_coinc=0.;
 	          }else if(data_struct.mode_num==8){
 	            for(int w = 0; w<data_struct.modules_num; w++){//reading the data from each involved fiber
 	              fp.read((char *)hit_structure_mode1, sizeof(hit_structure_mode1));
@@ -363,7 +387,7 @@ int main (int argc,char ** argv)
             N_event++;
           }
         }
-        //time->Fit("gaus","V","E1",56,67);
+        
         gSystem->ProcessEvents();
         for(int pd2 = 1; pd2 < 4; pd2++){
           complex_canv->cd();
@@ -403,39 +427,48 @@ int main (int argc,char ** argv)
   }else{std::cout<<"No files for the selected run - RETURN"<<std::endl;}
 
   // density of events under time difference peak computing
- 
-  int last_bin = time->FindLastBinAbove(0,1);
-  int first_bin = time->FindFirstBinAbove(0,1);
+  int last_bin = time_coinc->FindLastBinAbove(0,1);
+  int first_bin = time_coinc->FindFirstBinAbove(0,1);
   int bline_counter;
   double baseline_integral=0.;
   double peak_time_integral=0.;
   for (int bline=last_bin-26; bline<=last_bin-16;bline++){ //Change -26 and -16 value if bline value is under the peak. It can change if the time window is modified. It has been configured for a time window between 56 and 86 ns about.
-    baseline_integral = baseline_integral + time->GetBinContent(bline);
+    baseline_integral = baseline_integral + time_coinc->GetBinContent(bline);
     bline_counter=bline_counter+1;
   }
   double baseline = baseline_integral / bline_counter;
   std::cout<<baseline<<std::endl;
 
   for (int bin_scanner=first_bin; bin_scanner<=last_bin; bin_scanner++){
-    if (time->GetBinContent(bin_scanner)>baseline){
-    peak_time_integral = peak_time_integral + (time->GetBinContent(bin_scanner) - baseline);
+    if (time_coinc->GetBinContent(bin_scanner)>baseline){
+    peak_time_integral = peak_time_integral + (time_coinc->GetBinContent(bin_scanner) - baseline);
     }
   }
-  double density_under_peak_time = (peak_time_integral / time->Integral())*100;
+  double density_under_peak_time = (peak_time_integral / time_coinc->Integral())*100;
   std::cout<<"Density of events under the time difference peak without baseline : "<<density_under_peak_time<<std::endl;
   
-  
+  TFile outroot(Form("./analysis_output/run%d.root", runN), "RECREATE");
+  time_X->Write("time difference X plane");
+  time_Y->Write("time difference Y plane");
+  time_coinc->Write("time difference for coincidence events");
 
-  time->SetMinimum(0.001);
+  time_X->SetMinimum(0.001);
+  time_Y->SetMinimum(0.001);
+  time_coinc->SetMinimum(0.001);
   TCanvas *cTimeLog = new TCanvas("time spectrum log scale", "time spectrum log scale", 600, 500);
+  cTimeLog->SetTitle("Time delay for fibers on X and Y planes");
   cTimeLog->SetFillColor(0); //
   cTimeLog->SetBorderMode(0);	//
   cTimeLog->SetLeftMargin(0.1409396); //
   cTimeLog->SetRightMargin(0.14865772); //
   cTimeLog->SetLogy();
-  gStyle->SetOptStat(000); //
+  gStyle->SetOptTitle(0);
   cTimeLog->cd();
-  time->Draw("hist");
+  time_X->Draw("hist");
+  time_Y->Draw("same");
+  time_coinc->Draw("same");
+  time_X->SetStats(false); //
+  TLegend *leg=cTimeLog->BuildLegend(0.7,0.8,1.0,1.0);
 
 
     std::cout<<"TOT EVENT ANALYZED "<<N_event<<std::endl;
@@ -445,7 +478,7 @@ int main (int argc,char ** argv)
     std::cout<<"Event analyzed (with X/Y coinc) "<<N_event_valid_coinc<<" so "<<(double(N_event_valid_coinc)/double(N_event))*100<<std::endl;
 
 
-  TFile outroot(Form("./analysis_output/run%d.root", runN), "RECREATE");
+
   complex_canv->Write("complete_canvas");
   cluster->Write("cluster_raw");
   position_X->Write("raw fibers X");
@@ -455,7 +488,6 @@ int main (int argc,char ** argv)
   cog_X->Write("position X");
   cog_Y->Write("position Y");
   pos_2D->Write("2D map");
-  time ->Write("time difference");
   cTimeLog->Write("time diff log scale");
 
   //outroot.Close();
