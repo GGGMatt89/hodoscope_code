@@ -56,7 +56,7 @@ cin >> gain_add;
 
 path=Form("/media/oreste/DATA/S_CURVE/NICE/RUN%05i/",nRun_mes);
 path_injection=Form("/media/oreste/DATA/S_CURVE/%ipC/",charge_value);
-path_noise=Form("/media/oreste/DATA/S_CURVE/Noise_With_PM_Plugged_ASIC%i/",nASIC);
+path_noise=Form("/media/oreste/DATA/S_CURVE/Noise_Exp_Nice_0319_ASIC%i/",nASIC);
 
 TFile *additionnal_gain = new TFile(path+Form("additional_gain%.02f_ASIC%i_%ipC.root",gain_add,nASIC,charge_value),"RECREATE");
 //path_injection=Form("/Users/fontana/Dropbox/ASIC_Characterization_Hodoscope/RUN_S_CURVE/%ipC/",charge_value);
@@ -136,12 +136,14 @@ filename_injection = Form(path_noise + "Asic%i_CH(%02i)_Gain(%.2f).txt",nASIC ,n
       short_vec_injected.clear();
       threshold_vec.clear();
       input_file.close();
+                        }
+                        
 
 //Openning analysis_output file
 TCanvas *c = new TCanvas (Form("Canvas_analysis_ch%i_add_gain_%.02f_V_&_add_charge_%i_PC",nChannel,gain_add,charge_value), Form("Canvas_analysis_ch%i_add_gain_%.02f_V_&_add_charge_%i_PC",nChannel,gain_add,charge_value),1200,1000);
 c->Divide(1,2);
-TLegend *leg_enable = new TLegend (.7,.4,.9,.6);
-TLegend *leg_short = new TLegend (.7,.4,.9,.6);
+TLegend *leg_enable = new TLegend (.55,.6,.9,.8);
+TLegend *leg_short = new TLegend (.55,.6,.9,.8);
 filename_input=Form(path+"analysis_ASIC%i_%ipC.root",nASIC,charge_old);
 input_file2 = new TFile(filename_input, "READ");
 //input_file2.open(filename_input);
@@ -219,6 +221,7 @@ cout << filename_input<<endl;
       }
       cout << "Voulez vous ajouter les courbes de bruit sous conditions qu elles soient disponibles ?  Oui = 1 // Non = 0"<<endl;
       cin>>add_noise;
+      }
       c->cd(1);
       frame_enable = gPad->DrawFrame(0,0,Max_abscisse+200,750/*Max_ordonnee_enable+0.1*Max_ordonnee_enable*/);
       frame_enable->GetXaxis()->SetTitle("Threshold");
@@ -226,13 +229,18 @@ cout << filename_input<<endl;
       enable_injection_read->Draw("PL");
       enable_measurement_read->Draw("PL same");
       enable_injection->Draw("PL same");
+      leg_enable->SetTextFont(20);
+      leg_enable->SetTextSize(0.035);
       if (add_noise) {
-      enable_noise->Draw("PL same");
-      leg_enable->AddEntry(enable_noise, Form("Enable - Noise %.02f V",gain), "pl");
+        input_file.open(filename_injection);
+        if (input_file.is_open()){
+        enable_noise->Draw("PL same");
+        leg_enable->AddEntry(enable_noise, Form("Enable - Noise %.02f V",gain), "pl");
+        }
       }
-      leg_enable->AddEntry(enable_injection_read, Form("Enable - injection de charge - %ipC - %.02f gain",charge_old,gain), "pl");
+      leg_enable->AddEntry(enable_injection_read, Form("Enable - injection de charge - %ipC - %.02f V",charge_old,gain), "pl");
       leg_enable->AddEntry(enable_measurement_read, "Enable - beam measurement", "pl");
-      leg_enable->AddEntry(enable_injection, Form("Enable - injection de charge - %ipC - %.02f gain",charge_value,gain_add), "pl");
+      leg_enable->AddEntry(enable_injection, Form("Enable - injection de charge - %ipC - %.02f V",charge_value,gain_add), "pl");
       leg_enable->Draw();
 
       c-> Modified();
@@ -243,22 +251,25 @@ cout << filename_input<<endl;
       frame_short->GetXaxis()->SetTitle("Threshold");
       frame_short->GetYaxis()->SetTitle("Entries");
       short_injection_read->Draw("PL");
-      cout << gPad->GetUymax() <<"  "<<short_measurement_read->GetMaximum()<<endl; //
       //for (int i=0;i<short_measurement_read->GetN();i++) { short_measurement_read->GetY()[i] *=  gPad->GetUymax()/short_measurement_read->GetMaximum(); } // fonctionne mais GetMaximum negatif
       short_measurement_read->Draw("PL same");
       short_injection->Draw("PL same");
+      leg_short->SetTextFont(20);
+      leg_short->SetTextSize(0.035);
       if (add_noise) {
-      short_noise->Draw("PL same");
-      leg_short->AddEntry(short_noise, Form("Short - Noise %.02f V",gain), "pl");
+        if (input_file.is_open()){
+        short_noise->Draw("PL same");
+        leg_short->AddEntry(short_noise, Form("Short - Noise %.02f V",gain), "pl");
+        }
       }
       leg_short->AddEntry(short_injection_read, Form("Short - injection de charge - %ipC - %.02f V",charge_old,gain), "pl");
       leg_short->AddEntry(short_measurement_read, "Short - beam measurement", "pl");
       leg_short->AddEntry(short_injection, Form("Short - injection de charge - %ipC - %.02f V",charge_value,gain_add), "pl");
       leg_short->Draw();
-      //TGaxis *measurement_axis = new TGaxis(Max_abscisse+200,0,Max_abscisse+200,gPad->GetUymax(),1,Max_ordonnee_short+0.1*Max_ordonnee_short,510,"+G"); // fonctionne mais à adapter
+      /*TGaxis *measurement_axis = new TGaxis(Max_abscisse+200,0,Max_abscisse+200,gPad->GetUymax(),1,Max_ordonnee_short+0.1*Max_ordonnee_short,510,"+G"); // fonctionne mais à adapter
       measurement_axis->SetLineColor(kRed);
       measurement_axis->SetLabelColor(kRed);
-      measurement_axis->Draw();
+      measurement_axis->Draw();*/
 
 
       c-> Modified();
@@ -268,9 +279,9 @@ cout << filename_input<<endl;
       additionnal_gain-> cd();
       c->Write(Form("canvas_short_with_add_gain_%0.2f",gain_add));
       additionnal_gain-> Close();
-    }
+    
 
 
-}
+
 return;
 }
