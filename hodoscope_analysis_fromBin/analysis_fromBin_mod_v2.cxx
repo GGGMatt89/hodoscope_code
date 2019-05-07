@@ -14,6 +14,7 @@
 #include <stdio.h>
 #include <mutex>
 #include <vector>
+
 //ROOT classes
 #include "TLatex.h"
 #include "TROOT.h"
@@ -27,6 +28,7 @@
 #include "TApplication.h"
 #include "TRint.h"
 #include "TAxis.h"
+#include "TAttLine.h"
 #include "TTimer.h"
 #include "TStopwatch.h"
 #include "TSystem.h"
@@ -35,6 +37,7 @@
 #include "TGClient.h"
 #include "TPaveText.h"
 #include "TMath.h"
+
 //custom classes
 #include "functions.h"
 
@@ -47,6 +50,31 @@ int file_select(const struct dirent *entry)//selection of files to be included i
   }  else {
     return 1;
   }
+}
+// function used to plot a Poisson distribution on the number of involved fibers plots (cluster) for comparison with statistical noise
+TH1F* PoissonGauss() {
+float P=0.00001, Ntot=100000;
+float mu = Ntot * P, sigma = sqrt(mu*(1-P));
+int xmin, xmax, nbin;
+int bin_value;
+int fact;
+xmin = 0, xmax = 20; nbin = xmax - xmin;
+TH1F *Poiss=new TH1F("Poisson","Poisson",nbin,xmin,xmax);
+
+  for(int fish=xmin;fish<=xmax;fish++) //tirages
+    {
+    /*if (fish == 0) {
+      bin_value = 1./exp(mu);}
+   else {
+      fact=1;
+      for (int f=1;f<=fish;f++){ fact=fact*f; }
+      double loipoisson = (pow(mu,fish)*exp(-mu))/fact;
+      bin_value = loipoisson;
+   }
+   Poiss->Fill(fish,bin_value);*/
+    Poiss->Fill(fish,TMath::Poisson(fish,mu));
+    } 
+return(Poiss);
 }
 
 int main (int argc,char ** argv)
@@ -72,7 +100,9 @@ int main (int argc,char ** argv)
   gStyle -> SetStatY(0.85);
   gStyle -> SetStatFont(0);
   gStyle -> SetOptStat(111);
-  gStyle->SetPalette(1);
+  gStyle -> SetPalette(1);
+  gStyle -> SetOptTitle(1);
+  
   //-------------------------------//
   std::cout<<"STARTING analysis for run "<<runN<<" ... "<<std::endl;
   //Creating data structure to read the data from file
@@ -92,8 +122,8 @@ int main (int argc,char ** argv)
   int N_event=0;
   int N_event_valid = 0;
   int N_event_valid_coinc = 0;
-  int N_event_valid_X =0;
-  int N_event_valid_Y =0;
+  double N_event_valid_X =0;
+  double N_event_valid_Y =0;
 
   int count = 0;
   int count1 = 0;
@@ -101,6 +131,7 @@ int main (int argc,char ** argv)
   int events_read = 0;
   int wait_loop = 0;//counter for waiting loops
   int time_to_wait = 50;//how many waiting loops you accept before stopping the program
+  
   //Initializing char buffers for reading from file
   char init_file[10];//file header
   char end_file[8];//file end - for debugging
@@ -113,6 +144,12 @@ int main (int argc,char ** argv)
   //Initializing variables for saving time datas and variable to calculate the time difference
   double  hit_time_rec_coinc, hit_time_rec_X, hit_time_rec_Y;
   double  time_coinc_delay=0.,time_X_delay=0., time_Y_delay=0.;
+
+  //Initializing variables for saving X and Y fiber numbers when multiplicity >2
+  std::vector <int> number_fiberY, number_fiberX;
+  double multiplicityX_rate=0., multiplicityY_rate=0.;
+  double multiplicityX_ratio=0., multiplicityY_ratio=0.;
+
   //Starting ROOT in the c++ program
   TApplication theApp("App", &argc, argv);
   if (gROOT->IsBatch()) {
@@ -143,10 +180,12 @@ int main (int argc,char ** argv)
   cluster_X->SetLineColor(kRed);
   cluster_X->GetXaxis()->SetTitle("N involved fibers X");
   cluster_X->GetYaxis()->SetTitle("Entries");
+  cluster_X->GetYaxis()->SetTitleOffset(1.5);
   cluster_X->SetMinimum(0);
   cluster_Y->SetLineColor(kGreen);
   cluster_Y->GetXaxis()->SetTitle("N involved fibers Y");
   cluster_Y->GetYaxis()->SetTitle("Entries");
+  cluster_Y->GetYaxis()->SetTitleOffset(1.5);
   cluster_Y->SetMinimum(0);
   cog_X->SetLineColor(kRed);
   cog_X->GetXaxis()->SetTitle("Position X plane");
@@ -165,23 +204,48 @@ int main (int argc,char ** argv)
   TH1F *time_X = new TH1F("Time delay on X plane", "Time delay on X plane", 100, 50, 90);
   time_X->SetLineColor(kRed);
   time_X->GetXaxis()->SetTitle("Time difference (ns)");
+  time_X->GetXaxis()->SetTitleOffset(1);
+  time_X->GetXaxis()->SetTitleSize(0.04);
+  time_X->GetXaxis()->SetLabelSize(0.04);
   time_X->GetYaxis()->SetTitle("Entries");
+  time_X->GetYaxis()->SetTitleOffset(1.4);
+  time_X->GetYaxis()->SetTitleSize(0.04);
+  time_X->GetYaxis()->SetLabelSize(0.04);
   time_X->SetMinimum(0);
 
   TH1F *time_Y = new TH1F("Time delay on Y plane", "Time delay on Y plane", 100, 50, 90);
   time_Y->SetLineColor(kGreen);
   time_Y->GetXaxis()->SetTitle("Time difference (ns)");
+  time_Y->GetXaxis()->SetTitleOffset(1);
+  time_Y->GetXaxis()->SetTitleSize(0.04);
+  time_Y->GetXaxis()->SetLabelSize(0.04);
   time_Y->GetYaxis()->SetTitle("Entries");
+  time_Y->GetYaxis()->SetTitleOffset(1.4);
+  time_Y->GetYaxis()->SetTitleSize(0.04);
+  time_Y->GetYaxis()->SetLabelSize(0.04);
   time_Y->SetMinimum(0);
-
-  TH1F *time_coinc = new TH1F("Time delay with coincidence of fiber planes", "Time delay with coincidence of fiber planes", 100, 50, 90);
+  
+  
+  TH1F *time_coinc = new TH1F("Time delay with coincidence on fiber planes", "Time delay with coincidence on fiber planes", 100, 50, 90); //
   time_coinc->SetLineColor(kBlue);
+  gStyle->SetOptStat(000);
   time_coinc->GetXaxis()->SetTitle("Time difference (ns)");
+  time_coinc->GetXaxis()->SetTitleOffset(1);
+  time_coinc->GetXaxis()->SetTitleSize(0.04);
+  time_coinc->GetXaxis()->SetLabelSize(0.04);
   time_coinc->GetYaxis()->SetTitle("Entries");
+  time_coinc->GetYaxis()->SetTitleOffset(1.6);
+  time_coinc->GetYaxis()->SetTitleSize(0.04);
+  time_coinc->GetYaxis()->SetLabelSize(0.04);
+  time_coinc->SetLineWidth(4);
   time_coinc->SetMinimum(0);
   //Preparing stats to be shown
   TPaveText *pt;
+  TPaveText *baselinestat;
+  TPaveText *multiplicityX_stat;
+  TPaveText *multiplicityY_stat;
   //Preparing canvas
+
   TCanvas *complex_canv = new TCanvas("all data", "all data", 1200, 1000);
   complex_canv->SetFillColor(0); //
   complex_canv->SetBorderMode(0);	//
@@ -214,6 +278,11 @@ int main (int argc,char ** argv)
   cluster_X->Draw();
   treat_cluster_pad->cd(2);
   cluster_Y->Draw();
+  treat_cluster_pad->cd();
+  multiplicityX_stat = new TPaveText(0.75,0.6,0.99,0.65,"brNDC");
+  multiplicityX_stat->AddText(" multiplicity ratio : ");
+  multiplicityY_stat = new TPaveText(0.75,0.6,0.99,0.65,"brNDC");
+  multiplicityY_stat->AddText(" multiplicity ratio :  ");
   treat_positions_pad->Divide(2,1);
   treat_positions_pad->cd(1);
   cog_X->Draw();
@@ -303,7 +372,7 @@ int main (int argc,char ** argv)
         for(int Nevnts = 0; Nevnts<file_beg.Ntot_events; Nevnts++){
           fp.read((char *)event_header, sizeof(event_header));//reading the event header
           unpack_eventHead((unsigned char *)event_header, event_id);
-          //std::cout<<Nevnts<<std::endl;
+          //std::cout<<Nevnts<<std::endl; //DON'T REMOVE : used to check an eventual issue and search the event involved
           if(event_id.event_beg_id != beginning_event){
             std::cout<<"PROBLEM IN READING DATA -> CHECK THE DATA STRUCTURE! Moving to the next file"<<std::endl;
 	          std::cout<<event_id.event_beg_id<<std::endl;
@@ -322,7 +391,7 @@ int main (int argc,char ** argv)
 	         fp.read((char *)hit_structure_mode0, sizeof(hit_structure_mode0));
 	         unpack_data((unsigned char *)hit_structure_mode0, data_fiber);
                  
-                   if(data_fiber.N_fiber_rec<32){
+                   if(data_fiber.N_fiber_rec<32){ // fiber's numbers < 32 concern the fibers in the X plane
                    cog_X->Fill(data_fiber.N_fiber_rec);
     		           conv_X = convert_Xchannel_withCable(data_fiber.N_fiber_rec);
     		           if(conv_X > 0){
@@ -331,12 +400,15 @@ int main (int argc,char ** argv)
     		             flag_X = true;
     		             temp_pos_X += (conv_X);
                              hit_time_rec_X = data_fiber.hit_time_rec;
+                              // verification of position fibers during multiplicity >1
+                              number_fiberX.push_back(conv_X);
+                              
     		           }
     		           else{std::cout<<"Problem in fiber identification -> skip event "<<std::endl; continue;}
                    
     	           }
 
-    	           else if(data_fiber.N_fiber_rec>=32){
+    	           else if(data_fiber.N_fiber_rec>=32){ // fiber's numbers >= 32 concern the fibers in the Y plane
                      cog_Y->Fill(data_fiber.N_fiber_rec-32);
     	             conv_Y = convert_Ychannel_withCable(data_fiber.N_fiber_rec-32);
     		           if(conv_Y>0){
@@ -345,6 +417,8 @@ int main (int argc,char ** argv)
     		              flag_Y = true;
     		              temp_pos_Y += (conv_Y);
                               hit_time_rec_Y = data_fiber.hit_time_rec ;
+                              // verification of position fibers during multiplicity >1
+                              number_fiberY.push_back(conv_Y);
                            }
     		           else{std::cout<<"Problem in fiber identification -> skip event "<<std::endl; continue;}
                    
@@ -352,6 +426,28 @@ int main (int argc,char ** argv)
                    
     	           bzero(hit_structure_mode0, 5);
     	        }
+     
+                //output for multiplicity analysis : events which involve more than 2 fibers
+                if (number_fiberX.size()>2){
+                  multiplicityX_rate++;
+                  /*std::cout<< "\n\nMultiplicity in plane X on fibers : ";
+                  for ( int multiplicity=0; multiplicity < number_fiberX.size(); multiplicity++){
+                  std::cout<<number_fiberX.at(multiplicity)<<" ";
+                  }*/
+                }
+                
+                if (number_fiberY.size()>2){
+                  multiplicityY_rate++;
+                  /*std::cout<< "\n\nMultiplicity in plane Y on fibers : ";
+                  for ( int multiplicity2=0; multiplicity2 < number_fiberY.size(); multiplicity2++){
+                  std::cout<<number_fiberY.at(multiplicity2)<<" ";
+                  }*/
+                }
+                number_fiberX.clear();
+                number_fiberY.clear();
+                if (N_event_valid_X>0){ multiplicityX_ratio = multiplicityX_rate/N_event_valid_X;}
+                if (N_event_valid_Y>0){ multiplicityY_ratio = multiplicityY_rate/N_event_valid_Y;}
+                //end output multiplicity analysis
 
                 time_X_delay = std::abs((hit_time_rec_X*0.3125) - (event_id.trigger_number*0.625)) ;
                 time_Y_delay = std::abs((hit_time_rec_Y*0.3125) - (event_id.trigger_number*0.625)) ;
@@ -403,11 +499,21 @@ int main (int argc,char ** argv)
             gPad->Update();
           }
         }
+              
 	      complex_canv->cd();
 	      map_pad->Modified();
 	      map_pad->Update();
 	      time_pad->Modified();
 	      time_pad->Update();
+              treat_cluster_pad->cd(1);
+              multiplicityX_stat->Clear();
+              multiplicityX_stat->AddText(Form("multiplicity ratio : %.03f",multiplicityX_ratio));
+              multiplicityX_stat->Draw();
+              treat_cluster_pad->cd(2);
+              multiplicityY_stat->Clear();
+              multiplicityY_stat->AddText(Form("multiplicity ratio : %.03f",multiplicityY_ratio));
+              multiplicityY_stat->Draw();
+              treat_cluster_pad->Update();
 	      stats_pad->cd();
 	      pt->Clear();
 	      pt->AddText(Form("#bf{RUN %d - monitoring stats}", runN)); ((TText*)pt->GetListOfLines()->Last())->SetTextColor(kBlue); ((TText*)pt->GetListOfLines()->Last())->SetTextSize(0.14);
@@ -446,39 +552,28 @@ int main (int argc,char ** argv)
   }
   double density_under_peak_time = (peak_time_integral / time_coinc->Integral())*100;
   std::cout<<"Density of events under the time difference peak without baseline : "<<density_under_peak_time<<std::endl;
+
+//******************************POUR PUBLI SEULEMENT : A VIRER******************
   
+  // Plot of time coinc only for article format
+  TCanvas *cTime = new TCanvas("time spectrum coinc", "time spectrum coinc", 600, 600);
+  cTime->SetTitle("Coinc time delay");
+  cTime->SetFillColor(0); //
+  cTime->SetBorderMode(0);	//
+  cTime->SetLeftMargin(0.12); //
+  cTime->SetRightMargin(0.1); //
+  cTime->cd();
+  time_coinc->Draw("hist");
+  time_coinc->SetStats(false);
+ 
+
+//***************************************REPRISE VRAI PROGRAMME***************
+  
+  // Part of output files with initial style config
   TFile outroot(Form("./analysis_output/run%d.root", runN), "RECREATE");
   time_X->Write("time difference X plane");
   time_Y->Write("time difference Y plane");
   time_coinc->Write("time difference for coincidence events");
-
-  time_X->SetMinimum(0.001);
-  time_Y->SetMinimum(0.001);
-  time_coinc->SetMinimum(0.001);
-  TCanvas *cTimeLog = new TCanvas("time spectrum log scale", "time spectrum log scale", 600, 500);
-  cTimeLog->SetTitle("Time delay for fibers on X and Y planes");
-  cTimeLog->SetFillColor(0); //
-  cTimeLog->SetBorderMode(0);	//
-  cTimeLog->SetLeftMargin(0.1409396); //
-  cTimeLog->SetRightMargin(0.14865772); //
-  cTimeLog->SetLogy();
-  gStyle->SetOptTitle(0);
-  cTimeLog->cd();
-  time_X->Draw("hist");
-  time_Y->Draw("same");
-  time_coinc->Draw("same");
-  time_X->SetStats(false); //
-  TLegend *leg=cTimeLog->BuildLegend(0.7,0.8,1.0,1.0);
-
-
-    std::cout<<"TOT EVENT ANALYZED "<<N_event<<std::endl;
-    std::cout<<"Event analyzed (with at least one fiber hit) "<<N_event_valid<<" so "<<(double(N_event_valid)/double(N_event))*100<<std::endl;
-    std::cout<<"Event analyzed (with at least one fiber hit in X) "<<N_event_valid_X<<" so "<<(double(N_event_valid_X)/double(N_event))*100<<std::endl;
-    std::cout<<"Event analyzed (with at least one fiber hit in Y) "<<N_event_valid_Y<<" so "<<(double(N_event_valid_Y)/double(N_event))*100<<std::endl;
-    std::cout<<"Event analyzed (with X/Y coinc) "<<N_event_valid_coinc<<" so "<<(double(N_event_valid_coinc)/double(N_event))*100<<std::endl;
-
-
-
   complex_canv->Write("complete_canvas");
   cluster->Write("cluster_raw");
   position_X->Write("raw fibers X");
@@ -488,8 +583,76 @@ int main (int argc,char ** argv)
   cog_X->Write("position X");
   cog_Y->Write("position Y");
   pos_2D->Write("2D map");
-  cTimeLog->Write("time diff log scale");
+  
+  // Plot of time difference X and Y graphs with logarithmic scale on a same graph
+  time_X->SetMinimum(1);
+  time_Y->SetMinimum(1);
+  time_coinc->SetMinimum(1);
 
+  TCanvas *cTimeLog = new TCanvas("time spectrum log scale", "time spectrum log scale", 600, 600);
+  cTimeLog->SetTitle("Time delay for fibers on X and Y planes");
+  cTimeLog->SetFillColor(0); //
+  cTimeLog->SetBorderMode(0);	//
+  cTimeLog->SetLeftMargin(0.1409396); //
+  cTimeLog->SetRightMargin(0.14865772); //
+  TPad *Loghisto= new TPad("time log", "time log", 0.005, 0.005, 0.995, 0.995, 0);
+  Loghisto->SetLogy();
+  Loghisto->Draw();
+  TPad *statbaseline = new TPad("baseline stats", "baseline stats", 0.5, 0.1, 0.98, 0.2, 0);
+  statbaseline->Draw();
+  statbaseline->cd();
+  baselinestat=new TPaveText(.05,.05,.995,.995);
+  baselinestat->AddText(Form("#bf{Out of peak events ratio : %.03f %}", (float)(100-density_under_peak_time)));
+  baselinestat->Draw();
+  Loghisto->cd();
+  time_X->Draw("hist");
+  time_Y->Draw("same");
+  //time_coinc->Draw("same");
+  time_X->SetStats(false); //
+  TLegend *leg_time=Loghisto->BuildLegend(0.65,0.7,0.95,0.9);
+  time_X->SetTitle("Time delay for fibers on X and Y planes");
+
+  
+  // Plot of number of fibers hit in X and Y on a same graph
+  //Normalization
+  int normalizer_X = cluster_X->GetBinContent(cluster_X->GetMaximumBin());
+  int normalizer_Y = cluster_Y->GetBinContent(cluster_Y->GetMaximumBin());
+  
+  for (int norm_it=0;norm_it<22;norm_it++){
+  cluster_X->SetBinContent(norm_it,cluster_X->GetBinContent(norm_it)/normalizer_X);
+  cluster_Y->SetBinContent(norm_it,cluster_Y->GetBinContent(norm_it)/normalizer_Y);
+  }
+  // Poisson distribution plot
+  TH1F *Poisson=PoissonGauss();
+  TCanvas *hit_fibers_XY = new TCanvas("Hit fibers on X and Y planes", "Hit fibers on X and Y planes", 600, 500);
+  Poisson->SetLineColor(kBlue);
+  Poisson->SetMaximum(1.1);
+  Poisson->GetXaxis()->SetTitle("N involved fibers");
+  Poisson->GetYaxis()->SetTitle("Relative Entries");
+  Poisson->GetYaxis()->SetTitleOffset(1.5);
+  hit_fibers_XY->SetTitle("Hit fibers on X and Y planes");
+  hit_fibers_XY->SetFillColor(0); //
+  hit_fibers_XY->SetBorderMode(0);	//
+  hit_fibers_XY->SetLeftMargin(0.1409396); //
+  hit_fibers_XY->SetRightMargin(0.14865772); //
+  hit_fibers_XY->cd();
+  Poisson->Draw("hist");
+  cluster_X->Draw("same");
+  cluster_Y->TAttLine::SetLineStyle(9);
+  cluster_Y->Draw("same");
+  cluster_X->SetStats(false); //
+  TLegend *leg_cluster= hit_fibers_XY->BuildLegend(0.65,0.6,0.95,0.8);
+  cluster_X->SetTitle("Hit fibers on X and Y planes");
+
+    std::cout<<"TOT EVENT ANALYZED "<<N_event<<std::endl;
+    std::cout<<"Event analyzed (with at least one fiber hit) "<<N_event_valid<<" so "<<(double(N_event_valid)/double(N_event))*100<<std::endl;
+    std::cout<<"Event analyzed (with at least one fiber hit in X) "<<N_event_valid_X<<" so "<<(double(N_event_valid_X)/double(N_event))*100<<std::endl;
+    std::cout<<"Event analyzed (with at least one fiber hit in Y) "<<N_event_valid_Y<<" so "<<(double(N_event_valid_Y)/double(N_event))*100<<std::endl;
+    std::cout<<"Event analyzed (with X/Y coinc) "<<N_event_valid_coinc<<" so "<<(double(N_event_valid_coinc)/double(N_event))*100<<std::endl;
+
+  cTimeLog->Write("time diff log scale");
+  hit_fibers_XY->Write("Hits on X and Y");
+  
   //outroot.Close();
 
   return 0;
